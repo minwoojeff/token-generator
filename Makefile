@@ -17,10 +17,10 @@ default:
 	./token-generator
 
 test:
-	go test
+	go test ./...
 
 coverage:
-	go test -cover
+	go test ./... -cover
 
 acceptance:
 	pip3 install -q -r requirements.txt

@@ -13,15 +13,42 @@ import (
 
 const PRIVATE_KEY = "/tmp/private_key.rsa"
 
-func PasswordGrant(w http.ResponseWriter, data map[string]string) {
-	// Validate required fields for Password Grant Token
-	username, userOk := data["username"]
-	if !userOk {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Missing required params"))
-		return
+func Token(jti string, data map[string]string) *jwt.Token {
+	token := jwt.New(jwt.SigningMethodRS256)
+	claims := make(jwt.MapClaims)
+
+	now := time.Now().Unix()
+	expiry := time.Now().Add(time.Hour * 1).Unix()
+
+	claims["grant_type"] = "password"
+	claims["username"] = data["username"]
+	claims["iat"] = now    // issusedAt
+	claims["exp"] = expiry // Expiry, One Hour
+	claims["scope"] = []string{}
+	claims["client_id"] = data["client_id"]
+	claims["aud"] = []string{"password"}
+	claims["jti"] = jti
+
+	token.Claims = claims
+	return token
+}
+
+func NewToken(token *jwt.Token, privateKey []byte) (string, error) {
+	signKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKey)
+	if err != nil {
+		return "", err
 	}
 
+	// JWT Creation
+	jwt, err := token.SignedString(signKey)
+	if err != nil {
+		return "", err
+	}
+
+	return jwt, nil
+}
+
+func PasswordGrant(w http.ResponseWriter, data map[string]string) {
 	// UUID4
 	identifier, err := uuid.NewRandom()
 	if err != nil {
@@ -31,29 +58,23 @@ func PasswordGrant(w http.ResponseWriter, data map[string]string) {
 	}
 
 	// Set token claims
-	token := jwt.New(jwt.SigningMethodRS256)
-	claims := token.Claims.(jwt.MapClaims)
+	token := Token(identifier.String(), data)
 
-	now := time.Now().Unix()
-	expiry := time.Now().Add(time.Hour * 1).Unix()
-
-	claims["grant_type"] = "password"
-	claims["username"] = username
-	claims["iat"] = now    // issusedAt
-	claims["exp"] = expiry // Expiry, One Hour
-	claims["scope"] = []string{}
-	claims["client_id"] = data["client_id"]
-	claims["aud"] = []string{"password"}
-	claims["jti"] = identifier.String()
-
-	privateKey, err := helpers.ReadKey(PRIVATE_KEY)
+	r, err := helpers.Open(PRIVATE_KEY)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
 		return
 	}
 
-	jwt, err := helpers.NewToken(token, privateKey)
+	privateKey, err := helpers.Read(r)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	jj, err := NewToken(token, privateKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -61,12 +82,15 @@ func PasswordGrant(w http.ResponseWriter, data map[string]string) {
 	}
 
 	// Repsonse Token
+	exp := token.Claims.(jwt.MapClaims)["exp"]
+	iat := token.Claims.(jwt.MapClaims)["iat"]
+
 	refreshToken, _ := uuid.NewRandom()
 	resp := &models.Token{
-		AccessToken:  jwt,
+		AccessToken:  jj,
 		TokenType:    "password",
 		RefreshToken: refreshToken.String(),
-		ExpiresIn:    expiry - now,
+		ExpiresIn:    exp.(int64) - iat.(int64),
 		Scope:        []string{},
 		JTI:          identifier.String(),
 	}

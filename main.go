@@ -66,6 +66,13 @@ func TokenHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc)
 
 	switch grantType := data["grant_type"]; grantType {
 	case "password":
+		// Validation
+		_, userOk := data["username"]
+		if !userOk {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Missing required params"))
+			return
+		}
 		token.PasswordGrant(w, data)
 	case "authorization_code":
 		w.WriteHeader(http.StatusNotImplemented)
