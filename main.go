@@ -123,5 +123,5 @@ func main() {
 	// POST /oauth/token, Authenticated
 	main.PathPrefix("/oauth/token").Handler(n).Methods("POST")
 
-	log.Fatal(http.ListenAndServe(":3000", main))
+	log.Fatal(http.ListenAndServe(":80", main))
 }

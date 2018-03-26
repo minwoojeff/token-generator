@@ -6,7 +6,7 @@ ifeq ($(CLIENT_SECRET),)
 	export CLIENT_SECRET=password
 endif
 ifeq ($(CLIENT_URL),)
-	export CLIENT_URL=http://localhost:3000
+	export CLIENT_URL=http://localhost:80
 endif
 
 # COMMANDS #
