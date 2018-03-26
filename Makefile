@@ -19,12 +19,13 @@ default:
 test:
 	go test ./...
 
-coverage:
-	go test ./... -cover
+coverage_single:
+	go test -coverprofile=c.out
+	go tool cover -func=c.out
 
 acceptance:
 	pip3 install -q -r requirements.txt
 	python3 acceptance_test.py ${CLIENT_URL}
 
 clean:
-	rm -rf tmp/
+	rm -rf tmp/ c.out
