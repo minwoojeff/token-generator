@@ -5,17 +5,24 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/token-generator/models"
 	"github.com/urfave/negroni"
 )
 
 // Global vars
 var clientID = os.Getenv("CLIENT_ID")
 var clientSecret = os.Getenv("CLIENT_SECRET")
+
+const PRIVATE_KEY = "/tmp/private_key.rsa"
 
 type Info struct {
 	Version     string `json:"version"`
@@ -45,9 +52,81 @@ func Health(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func PasswordGrantToken(w http.ResponseWriter, r *http.Request) {
+func PasswordGrantToken(w http.ResponseWriter, data map[string]string) {
+	// Validate required fields for Password Grant Token
+	username, userOk := data["username"]
+	if !userOk {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing required params"))
+		return
+	}
+
+	// UUID4
+	identifier, err := uuid.NewRandom()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	// Set token claims
+	token := jwt.New(jwt.SigningMethodRS256)
+	claims := token.Claims.(jwt.MapClaims)
+
+	expiry := time.Now().Add(time.Hour * 1).Unix()
+
+	claims["grant_type"] = "password"
+	claims["username"] = username
+	claims["iat"] = time.Now().Unix() // issusedAt
+	claims["exp"] = expiry            // Expiry, One Hour
+	claims["scope"] = []string{}
+	claims["client_id"] = clientID
+	claims["aud"] = []string{"password"}
+	claims["jti"] = identifier.String()
+
+	dir, _ := os.Getwd()
+	privateKey, err := ioutil.ReadFile(dir + PRIVATE_KEY)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	signKey, err := jwt.ParseRSAPrivateKeyFromPEM(privateKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	// JWT Creation
+	jwt, err := token.SignedString(signKey)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	refreshToken, _ := uuid.NewRandom()
+	// Repsonse Token
+	resp := &models.Token{
+		AccessToken:  jwt,
+		TokenType:    "password",
+		RefreshToken: refreshToken.String(),
+		ExpiresIn:    expiry,
+		Scope:        []string{},
+		JTI:          identifier.String(),
+	}
+
+	j, err := json.Marshal(resp)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("password grant here~"))
+	w.Write([]byte(j))
 	return
 }
 
@@ -75,7 +154,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc)
 
 	switch grantType := data["grant_type"]; grantType {
 	case "password":
-		PasswordGrantToken(w, r)
+		PasswordGrantToken(w, data)
 	case "authorization_code":
 		w.WriteHeader(http.StatusNotImplemented)
 		return
@@ -91,7 +170,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request, next http.HandlerFunc)
 
 func Authenticate(r *http.Request, data map[string]string) (int, error) {
 	user, pass, ok := r.BasicAuth()
-	r.Close = false
+
 	// client_id and client_secret may be passed as part of payload
 	if !ok {
 		user = data["client_id"]
@@ -102,7 +181,6 @@ func Authenticate(r *http.Request, data map[string]string) (int, error) {
 		return http.StatusUnauthorized, errors.New("Unauthorized")
 	}
 
-	log.Println("Successfully authenticated")
 	return 0, nil
 }
 
