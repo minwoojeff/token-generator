@@ -38,6 +38,22 @@ def body_auth(url):
     assert(r.text == 'Unsupported grant type')
 
 
+def password_validation(url):
+    oauth_token_url = '{}/oauth/token'.format(url)
+    payload = {
+        "client_id": "default",
+        "client_secret": "password",
+        "grant_type": "password",
+        "username": "test@someemail.com"
+    }
+
+    r = requests.post(oauth_token_url, json=payload)
+    assert(r.status_code == 200)
+    
+    j = r.json()
+    assert(j["access_token"] != None)
+
+
 def main():
     args = sys.argv
 
@@ -55,6 +71,10 @@ def main():
     # 2. Authentication Validation
     authentication_validation(base_url)
     print("PASS: Authentication")
+
+    # 3. Password Grant Validation
+    password_validation(base_url)
+    print("PASS: Password Grant")
 
 
 if __name__ == "__main__":

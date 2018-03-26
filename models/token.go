@@ -8,3 +8,8 @@ type Token struct {
 	Scope        []string `json:"scope"`
 	JTI          string   `json:"jti"`
 }
+
+type Info struct {
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
